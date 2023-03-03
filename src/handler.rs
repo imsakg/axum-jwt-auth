@@ -68,13 +68,12 @@ pub async fn register_user_handler(
         })
         .map(|hash| hash.to_string())?;
 
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (name,email,password) VALUES ($1, $2, $3) RETURNING *",
-        body.name.to_string(),
-        body.email.to_string().to_ascii_lowercase(),
-        hashed_password
     )
+    .bind(body.name.to_string())
+    .bind(body.email.to_ascii_lowercase())
+    .bind(hashed_password)
     .fetch_one(&data.db)
     .await
     .map_err(|e| {
@@ -96,27 +95,24 @@ pub async fn login_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<LoginUserSchema>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let user = sqlx::query_as!(
-        User,
-        "SELECT * FROM users WHERE email = $1",
-        body.email.to_ascii_lowercase()
-    )
-    .fetch_optional(&data.db)
-    .await
-    .map_err(|e| {
-        let error_response = serde_json::json!({
-            "status": "error",
-            "message": format!("Database error: {}", e),
-        });
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-    })?
-    .ok_or_else(|| {
-        let error_response = serde_json::json!({
-            "status": "fail",
-            "message": "Invalid email or password",
-        });
-        (StatusCode::BAD_REQUEST, Json(error_response))
-    })?;
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
+        .bind(body.email.to_ascii_lowercase())
+        .fetch_optional(&data.db)
+        .await
+        .map_err(|e| {
+            let error_response = serde_json::json!({
+                "status": "error",
+                "message": format!("Database error: {}", e),
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
+        })?
+        .ok_or_else(|| {
+            let error_response = serde_json::json!({
+                "status": "fail",
+                "message": "Invalid email or password",
+            });
+            (StatusCode::BAD_REQUEST, Json(error_response))
+        })?;
 
     let is_valid = match PasswordHash::new(&user.password) {
         Ok(parsed_hash) => Argon2::default()
