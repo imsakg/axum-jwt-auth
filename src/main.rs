@@ -1,11 +1,4 @@
-mod config;
-mod handler;
-mod jwt_auth;
-mod model;
-mod response;
-mod route;
-
-use config::Config;
+use axum_jwt_auth::{config::Config, route::create_router, AppState};
 use std::sync::Arc;
 
 use axum::http::{
@@ -13,15 +6,9 @@ use axum::http::{
     HeaderValue, Method,
 };
 use dotenv::dotenv;
-use route::create_router;
 use tower_http::cors::CorsLayer;
 
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-
-pub struct AppState {
-    db: Pool<Postgres>,
-    env: Config,
-}
+use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
 async fn main() {
