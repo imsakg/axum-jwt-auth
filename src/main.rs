@@ -14,7 +14,7 @@ use sqlx::postgres::PgPoolOptions;
 async fn main() {
     dotenv().ok();
 
-    let config = Config::init();
+    let config = Config::from_env().expect("invalid application configuration");
 
     let pool = match PgPoolOptions::new()
         .max_connections(10)
