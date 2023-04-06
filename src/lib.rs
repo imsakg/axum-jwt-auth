@@ -3,6 +3,7 @@ pub mod error;
 pub mod handler;
 pub mod jwt_auth;
 pub mod model;
+pub mod password;
 pub mod response;
 pub mod route;
 
