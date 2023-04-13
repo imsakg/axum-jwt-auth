@@ -6,6 +6,7 @@ pub mod model;
 pub mod password;
 pub mod response;
 pub mod route;
+pub mod validation;
 
 use sqlx::PgPool;
 
