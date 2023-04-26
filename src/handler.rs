@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::{
     extract::State,
     http::{header, Response, StatusCode},
@@ -9,7 +8,6 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use jsonwebtoken::{encode, EncodingKey, Header};
-use rand_core::OsRng;
 use serde_json::json;
 
 use crate::{
@@ -47,68 +45,22 @@ pub async fn register_user_handler(
 pub async fn login_user_handler(
     State(data): State<Arc<AppState>>,
     Json(body): Json<LoginUserSchema>,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<impl IntoResponse, crate::error::ApiError> {
+    use crate::{error::ApiError, password::verify_password, validation::normalize_email};
+    let email = normalize_email(&body.email).map_err(|_| ApiError::Unauthorized)?;
+    if body.password.is_empty() || body.password.len() > 128 { return Err(ApiError::Unauthorized); }
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
-        .bind(body.email.to_ascii_lowercase())
-        .fetch_optional(&data.db)
-        .await
-        .map_err(|e| {
-            let error_response = serde_json::json!({
-                "status": "error",
-                "message": format!("Database error: {}", e),
-            });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response))
-        })?
-        .ok_or_else(|| {
-            let error_response = serde_json::json!({
-                "status": "fail",
-                "message": "Invalid email or password",
-            });
-            (StatusCode::BAD_REQUEST, Json(error_response))
-        })?;
-
-    let is_valid = match PasswordHash::new(&user.password) {
-        Ok(parsed_hash) => Argon2::default()
-            .verify_password(body.password.as_bytes(), &parsed_hash)
-            .map_or(false, |_| true),
-        Err(_) => false,
-    };
-
-    if !is_valid {
-        let error_response = serde_json::json!({
-            "status": "fail",
-            "message": "Invalid email or password"
-        });
-        return Err((StatusCode::BAD_REQUEST, Json(error_response)));
-    }
-
-    let now = chrono::Utc::now();
-    let iat = now.timestamp() as usize;
-    let exp = (now + chrono::Duration::minutes(60)).timestamp() as usize;
-    let claims: TokenClaims = TokenClaims {
-        sub: user.id.to_string(),
-        exp,
-        iat,
-    };
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(data.env.jwt_secret.as_ref()),
-    )
-    .unwrap();
-
-    let cookie = Cookie::build(("token", token.to_owned()))
-        .path("/")
-        .max_age(time::Duration::hours(1))
-        .same_site(SameSite::Lax)
-        .http_only(true);
-
-    let mut response = Response::new(json!({"status": "success", "token": token}).to_string());
-    response
-        .headers_mut()
-        .insert(header::SET_COOKIE, cookie.to_string().parse().unwrap());
-    Ok(response)
+        .bind(email).fetch_optional(&data.db).await?.ok_or(ApiError::Unauthorized)?;
+    let password = body.password;
+    let hash = user.password;
+    let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
+        .await.map_err(|_| ApiError::Internal)?;
+    if !valid { return Err(ApiError::Unauthorized); }
+    let now = chrono::Utc::now().timestamp();
+    let claims = TokenClaims { sub:user.id.to_string(), iat:now as usize, exp:(now + data.env.access_ttl_seconds) as usize };
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(data.env.jwt_secret.as_bytes()))
+        .map_err(|_| ApiError::Internal)?;
+    Ok(Json(json!({"status":"success", "token":token, "token_type":"Bearer", "expires_in":data.env.access_ttl_seconds})))
 }
 
 pub async fn logout_handler() -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
