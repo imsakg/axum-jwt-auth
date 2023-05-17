@@ -43,13 +43,25 @@ impl TokenService {
         encode(&header, &claims, &EncodingKey::from_secret(self.keys[&self.active_kid].as_bytes())).map_err(|_| ApiError::Internal)
     }
     pub fn verify(&self, token: &str) -> Result<AccessClaims, ApiError> {
+        if token.len() > 8192 { return Err(ApiError::Unauthorized); }
         let header = decode_header(token).map_err(|_| ApiError::Unauthorized)?;
+        if header.alg != Algorithm::HS256 || header.typ.as_deref() != Some("JWT") { return Err(ApiError::Unauthorized); }
         let kid = header.kid.ok_or(ApiError::Unauthorized)?;
         let key = self.keys.get(&kid).ok_or(ApiError::Unauthorized)?;
         let mut validation = Validation::new(Algorithm::HS256);
+        validation.leeway = 0;
+        validation.validate_nbf = true;
+        validation.set_required_spec_claims(&["exp", "iat", "nbf", "iss", "aud", "sub"]);
         validation.set_issuer(&[&self.issuer]);
         validation.set_audience(&[&self.audience]);
-        decode::<AccessClaims>(token, &DecodingKey::from_secret(key.as_bytes()), &validation)
-            .map(|data| data.claims).map_err(|_| ApiError::Unauthorized)
+        let claims = decode::<AccessClaims>(token, &DecodingKey::from_secret(key.as_bytes()), &validation)
+            .map_err(|_| ApiError::Unauthorized)?.claims;
+        let now = chrono::Utc::now().timestamp();
+        if claims.token_use != "access" || claims.iat < 0 || claims.iat > now
+            || claims.nbf > now || claims.exp <= now || claims.exp <= claims.iat
+            || claims.sub.is_nil() || claims.sid.is_nil() || claims.jti.is_nil() {
+            return Err(ApiError::Unauthorized);
+        }
+        Ok(claims)
     }
 }
