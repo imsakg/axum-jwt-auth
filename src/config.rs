@@ -4,6 +4,8 @@ use std::fmt;
 pub struct Config {
     pub database_url: String,
     pub jwt_secret: String,
+    pub jwt_keys: std::collections::BTreeMap<String, String>,
+    pub active_kid: String,
     pub access_ttl_seconds: i64,
     pub refresh_ttl_seconds: i64,
     pub issuer: String,
@@ -22,6 +24,9 @@ impl fmt::Debug for Config {
 }
 
 impl Config {
+    pub fn token_service(&self) -> Result<crate::token::TokenService, crate::error::ApiError> {
+        crate::token::TokenService::from_keys(&self.active_kid, self.jwt_keys.clone(), &self.issuer, &self.audience, self.access_ttl_seconds)
+    }
     pub fn from_env() -> Result<Self, &'static str> {
         Self::from_lookup(|key| std::env::var(key).ok())
     }
@@ -31,10 +36,19 @@ impl Config {
         if !database_url.starts_with("postgres://") && !database_url.starts_with("postgresql://") {
             return Err("invalid DATABASE_URL");
         }
-        let jwt_secret = get("JWT_SECRET").ok_or("missing JWT_SECRET")?;
-        if jwt_secret.len() < 32 {
-            return Err("JWT_SECRET must contain at least 32 bytes");
+        let (jwt_keys, active_kid) = if let Some(raw) = get("JWT_KEYS") {
+            let keys = serde_json::from_str::<std::collections::BTreeMap<String, String>>(&raw)
+                .map_err(|_| "invalid JWT_KEYS")?;
+            (keys, get("JWT_ACTIVE_KID").unwrap_or_else(|| "default".into()))
+        } else {
+            let secret = get("JWT_SECRET").ok_or("missing JWT_SECRET")?;
+            if secret.len() < 32 { return Err("JWT_SECRET must contain at least 32 bytes"); }
+            (std::collections::BTreeMap::from([("default".into(), secret)]), get("JWT_ACTIVE_KID").unwrap_or_else(|| "default".into()))
+        };
+        if jwt_keys.len() > 16 || crate::token::TokenService::from_keys(&active_kid, jwt_keys.clone(), "config-check", "config-check", 900).is_err() {
+            return Err("invalid JWT_KEYS or JWT_ACTIVE_KID");
         }
+        let jwt_secret = jwt_keys[&active_kid].clone();
         let ttl = |key: &str, default: i64, max: i64| -> Result<i64, &'static str> {
             let message = match key {
                 "ACCESS_TTL_SECONDS" => "invalid ACCESS_TTL_SECONDS",
@@ -66,6 +80,8 @@ impl Config {
         Ok(Self {
             database_url,
             jwt_secret,
+            jwt_keys,
+            active_kid,
             access_ttl_seconds,
             refresh_ttl_seconds,
             issuer,
