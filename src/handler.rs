@@ -57,9 +57,7 @@ pub async fn login_user_handler(
         .await.map_err(|_| ApiError::Internal)?;
     if !valid { return Err(ApiError::Unauthorized); }
     let now = chrono::Utc::now().timestamp();
-    let claims = TokenClaims { sub:user.id.to_string(), iat:now as usize, exp:(now + data.env.access_ttl_seconds) as usize };
-    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(data.env.jwt_secret.as_bytes()))
-        .map_err(|_| ApiError::Internal)?;
+    let token = data.env.token_service()?.issue(user.id, uuid::Uuid::new_v4(), now)?;
     Ok(Json(json!({"status":"success", "token":token, "token_type":"Bearer", "expires_in":data.env.access_ttl_seconds})))
 }
 

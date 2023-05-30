@@ -1,101 +1,23 @@
 use std::sync::Arc;
+use axum::{body::Body, extract::State, http::{header, HeaderMap, Request}, middleware::Next, response::Response};
+use crate::{error::ApiError, model::User, AppState};
 
-use axum::{
-    body::Body,
-    extract::State,
-    http::{header, Request, StatusCode},
-    middleware::Next,
-    response::IntoResponse,
-    Json,
-};
-
-use axum_extra::extract::cookie::CookieJar;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use serde::Serialize;
-
-use crate::{
-    model::{TokenClaims, User},
-    AppState,
-};
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub status: &'static str,
-    pub message: String,
+pub fn bearer_token(headers: &HeaderMap) -> Result<&str, ApiError> {
+    let mut values = headers.get_all(header::AUTHORIZATION).iter();
+    let value = values.next().ok_or(ApiError::Unauthorized)?;
+    if values.next().is_some() { return Err(ApiError::Unauthorized); }
+    let (scheme, token) = value.to_str().map_err(|_| ApiError::Unauthorized)?.split_once(' ').ok_or(ApiError::Unauthorized)?;
+    if !scheme.eq_ignore_ascii_case("Bearer") || token.is_empty() || token.len() > 8192 || token.chars().any(char::is_whitespace) {
+        return Err(ApiError::Unauthorized);
+    }
+    Ok(token)
 }
 
-pub async fn auth(
-    cookie_jar: CookieJar,
-    State(data): State<Arc<AppState>>,
-    mut req: Request<Body>,
-    next: Next,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let token = cookie_jar
-        .get("token")
-        .map(|cookie| cookie.value().to_string())
-        .or_else(|| {
-            req.headers()
-                .get(header::AUTHORIZATION)
-                .and_then(|auth_header| auth_header.to_str().ok())
-                .and_then(|auth_value| {
-                    if auth_value.starts_with("Bearer ") {
-                        Some(auth_value[7..].to_owned())
-                    } else {
-                        None
-                    }
-                })
-        });
-
-    let token = token.ok_or_else(|| {
-        let json_error = ErrorResponse {
-            status: "fail",
-            message: "You are not logged in, please provide token".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(json_error))
-    })?;
-
-    let claims = decode::<TokenClaims>(
-        &token,
-        &DecodingKey::from_secret(data.env.jwt_secret.as_ref()),
-        &Validation::default(),
-    )
-    .map_err(|_| {
-        let json_error = ErrorResponse {
-            status: "fail",
-            message: "Invalid token".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(json_error))
-    })?
-    .claims;
-
-    let user_id = uuid::Uuid::parse_str(&claims.sub).map_err(|_| {
-        let json_error = ErrorResponse {
-            status: "fail",
-            message: "Invalid token".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(json_error))
-    })?;
-
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(&data.db)
-        .await
-        .map_err(|e| {
-            let json_error = ErrorResponse {
-                status: "fail",
-                message: format!("Error fetching user from database: {}", e),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json_error))
-        })?;
-
-    let user = user.ok_or_else(|| {
-        let json_error = ErrorResponse {
-            status: "fail",
-            message: "The user belonging to this token no longer exists".to_string(),
-        };
-        (StatusCode::UNAUTHORIZED, Json(json_error))
-    })?;
-
-    req.extensions_mut().insert(user);
-    Ok(next.run(req).await)
+pub async fn auth(State(data): State<Arc<AppState>>, mut request: Request<Body>, next: Next) -> Result<Response, ApiError> {
+    let claims = data.env.token_service()?.verify(bearer_token(request.headers())?)?;
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id=$1")
+        .bind(claims.sub).fetch_optional(&data.db).await?.ok_or(ApiError::Unauthorized)?;
+    request.extensions_mut().insert(user);
+    request.extensions_mut().insert(claims);
+    Ok(next.run(request).await)
 }
