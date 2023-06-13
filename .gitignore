@@ -4,3 +4,6 @@
 !.env.example
 .DS_Store
 *.log
+# Database schema is source, even when a developer globally ignores SQL dumps.
+!migrations/
+!migrations/*.sql
