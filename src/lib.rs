@@ -5,6 +5,7 @@ pub mod jwt_auth;
 pub mod model;
 pub mod password;
 pub mod response;
+pub mod refresh;
 pub mod route;
 pub mod token;
 pub mod validation;
