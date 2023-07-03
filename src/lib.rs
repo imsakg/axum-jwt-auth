@@ -7,6 +7,7 @@ pub mod password;
 pub mod response;
 pub mod refresh;
 pub mod route;
+pub mod session;
 pub mod token;
 pub mod validation;
 
