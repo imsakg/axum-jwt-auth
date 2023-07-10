@@ -41,3 +41,20 @@ async fn session_issuance_persists_only_the_refresh_digest() {
     assert_eq!(stored,claims.sid);
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL and CREATEDB on a disposable Postgres"]
+async fn registration_and_login_issue_a_persisted_pair() {
+    use axum_jwt_auth::route::create_router;
+    use serde_json::json;
+    let fixture=Fixture::new().await;
+    let app=create_router(fixture.state.clone());
+    let (status,body)=common::request(app.clone(),"POST","/api/auth/register",json!({"name":"Alice","email":" Alice@Example.test ","password":"long-enough-password","role":"admin"}),None).await;
+    assert_eq!(status,201); assert_eq!(body["data"]["user"]["role"],"user");
+    assert!(body["data"]["user"].get("password").is_none());
+    let (status,body)=common::request(app,"POST","/api/auth/login",json!({"email":"ALICE@example.test","password":"long-enough-password"}),None).await;
+    assert_eq!(status,200); assert!(body["access_token"].is_string()); assert!(body["refresh_token"].is_string());
+    let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM session_families").fetch_one(&fixture.state.db).await.unwrap();
+    assert_eq!(count,1);
+    fixture.close().await;
+}

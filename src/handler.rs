@@ -7,7 +7,6 @@ use axum::{
     Extension, Json,
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::json;
 
 use crate::{
@@ -56,9 +55,7 @@ pub async fn login_user_handler(
     let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
         .await.map_err(|_| ApiError::Internal)?;
     if !valid { return Err(ApiError::Unauthorized); }
-    let now = chrono::Utc::now().timestamp();
-    let token = data.env.token_service()?.issue(user.id, uuid::Uuid::new_v4(), now)?;
-    Ok(Json(json!({"status":"success", "token":token, "token_type":"Bearer", "expires_in":data.env.access_ttl_seconds})))
+    Ok(Json(crate::session::issue_session(&data, user.id).await?))
 }
 
 pub async fn logout_handler() -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
