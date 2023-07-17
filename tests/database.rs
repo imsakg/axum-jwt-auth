@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/rotation.rs"]
+mod rotation;
 use std::{str::FromStr,sync::Arc};
 use axum_jwt_auth::{session::issue_session,AppState};
 use sqlx::{postgres::{PgConnectOptions,PgPoolOptions},PgPool};
