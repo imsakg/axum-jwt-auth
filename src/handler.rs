@@ -58,6 +58,13 @@ pub async fn login_user_handler(
     Ok(Json(crate::session::issue_session(&data, user.id).await?))
 }
 
+pub async fn refresh_handler(
+    State(data): State<Arc<AppState>>,
+    Json(body): Json<crate::model::RefreshSchema>,
+) -> Result<Json<crate::session::TokenPair>, crate::error::ApiError> {
+    Ok(Json(crate::session::rotate_session(&data, &body.refresh_token).await?))
+}
+
 pub async fn logout_handler() -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let cookie = Cookie::build(("token", ""))
         .path("/")

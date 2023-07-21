@@ -20,6 +20,7 @@ pub fn create_router(app_state: Arc<AppState>) -> Router {
         .route("/api/healthchecker", get(health_checker_handler))
         .route("/api/auth/register", post(register_user_handler))
         .route("/api/auth/login", post(login_user_handler))
+        .route("/api/auth/refresh", post(crate::handler::refresh_handler))
         .route(
             "/api/auth/logout",
             get(logout_handler)

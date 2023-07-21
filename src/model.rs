@@ -31,6 +31,10 @@ pub struct RegisterUserSchema {
     pub password: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefreshSchema { pub refresh_token: String }
+
 #[derive(Debug, Deserialize)]
 pub struct LoginUserSchema {
     pub email: String,
