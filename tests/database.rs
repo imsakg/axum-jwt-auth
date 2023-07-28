@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/replay.rs"]
+mod replay;
 #[path = "cases/rotation.rs"]
 mod rotation;
 use std::{str::FromStr,sync::Arc};
