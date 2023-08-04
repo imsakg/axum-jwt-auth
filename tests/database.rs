@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/logout.rs"]
+mod logout;
 #[path = "cases/replay.rs"]
 mod replay;
 #[path = "cases/rotation.rs"]
