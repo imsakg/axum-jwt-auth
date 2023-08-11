@@ -15,8 +15,8 @@ pub fn bearer_token(headers: &HeaderMap) -> Result<&str, ApiError> {
 
 pub async fn auth(State(data): State<Arc<AppState>>, mut request: Request<Body>, next: Next) -> Result<Response, ApiError> {
     let claims = data.env.token_service()?.verify(bearer_token(request.headers())?)?;
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id=$1")
-        .bind(claims.sub).fetch_optional(&data.db).await?.ok_or(ApiError::Unauthorized)?;
+    let user = sqlx::query_as::<_, User>("SELECT u.* FROM users u JOIN session_families f ON f.user_id=u.id WHERE u.id=$1 AND f.id=$2 AND f.revoked_at IS NULL AND f.expires_at>NOW()")
+        .bind(claims.sub).bind(claims.sid).fetch_optional(&data.db).await?.ok_or(ApiError::Unauthorized)?;
     request.extensions_mut().insert(user);
     request.extensions_mut().insert(claims);
     Ok(next.run(request).await)
