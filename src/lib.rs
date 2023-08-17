@@ -6,6 +6,7 @@ pub mod model;
 pub mod password;
 pub mod response;
 pub mod refresh;
+pub mod rbac;
 pub mod route;
 pub mod session;
 pub mod token;
