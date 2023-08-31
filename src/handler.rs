@@ -40,6 +40,12 @@ pub async fn get_me_handler(Extension(user): Extension<User>) -> impl IntoRespon
     Json(json!({"status":"success","data":{"user":filter_user_record(&user)}}))
 }
 
+pub async fn list_users_handler(State(data): State<Arc<AppState>>) -> Result<impl IntoResponse,ApiError> {
+    let users=sqlx::query_as::<_,User>("SELECT * FROM users ORDER BY created_at,id LIMIT 100").fetch_all(&data.db).await?;
+    let users:Vec<_>=users.iter().map(filter_user_record).collect();
+    Ok(Json(json!({"status":"success","data":{"users":users}})))
+}
+
 pub(crate) fn filter_user_record(user: &User) -> FilteredUser {
     FilteredUser { id:user.id.to_string(),email:user.email.clone(),name:user.name.clone(),photo:user.photo.clone(),role:user.role.clone(),verified:user.verified,createdAt:user.created_at.unwrap(),updatedAt:user.updated_at.unwrap() }
 }
