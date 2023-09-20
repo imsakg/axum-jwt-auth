@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/lifecycle.rs"]
+mod lifecycle;
 #[path = "cases/access.rs"]
 mod access;
 #[path = "cases/logout.rs"]
