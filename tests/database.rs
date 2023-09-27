@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/concurrency.rs"]
+mod concurrency;
 #[path = "cases/lifecycle.rs"]
 mod lifecycle;
 #[path = "cases/access.rs"]
