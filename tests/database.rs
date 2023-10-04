@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/roles.rs"]
+mod roles;
 #[path = "cases/concurrency.rs"]
 mod concurrency;
 #[path = "cases/lifecycle.rs"]
