@@ -36,6 +36,12 @@ pub async fn logout_handler(State(data): State<Arc<AppState>>, Extension(claims)
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn logout_all_handler(State(data): State<Arc<AppState>>, Extension(user): Extension<User>) -> Result<StatusCode,ApiError> {
+    sqlx::query("UPDATE session_families SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(user.id).execute(&data.db).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn get_me_handler(Extension(user): Extension<User>) -> impl IntoResponse {
     Json(json!({"status":"success","data":{"user":filter_user_record(&user)}}))
 }
