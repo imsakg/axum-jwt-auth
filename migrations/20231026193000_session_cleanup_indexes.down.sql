@@ -1,0 +1,2 @@
+DROP INDEX session_families_active_user_idx;
+DROP INDEX session_families_expiry_idx;

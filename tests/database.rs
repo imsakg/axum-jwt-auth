@@ -1,4 +1,6 @@
 mod common;
+#[path = "cases/all_device.rs"]
+mod all_device;
 #[path = "cases/roles.rs"]
 mod roles;
 #[path = "cases/concurrency.rs"]
